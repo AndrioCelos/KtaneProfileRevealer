@@ -8,6 +8,7 @@ using UnityEngine;
 namespace ProfileRevealerLib {
 	public partial class Config {
 		public bool ShowModuleNames;
+		public bool ShowBossStatus = true;
 		public float Delay = 2;
 		[JsonIgnore]
 		public KeyCode PopupKey = KeyCode.F1;
@@ -63,12 +64,23 @@ namespace ProfileRevealerLib {
 			}
 		}
 
+		[JsonIgnore]
+		public bool IsAdvantagusFeatures
+		{
+			get
+			{
+				return ShowModuleNames || ShowBossStatus;
+
+			}
+		}
+
 		internal static readonly Dictionary<string, object>[] TweaksEditorSettings = new[] {
 			new Dictionary<string, object> {
 				{ "Filename", "ProfileRevealer-settings.txt" },
 				{ "Name", "Profile Revealer" },
 				{ "Listings", new List<Dictionary<string, object>> {
 						new Dictionary<string, object> { { "Key", nameof(ShowModuleNames) }, { "Text", "Show Module Names" }, { "Description", "Shows the name of the module in the popup. Disables leaderboards.\nDisable Advantageous Features in Tweaks overrides this." } },
+						new Dictionary<string, object> { { "Key", nameof(ShowBossStatus) }, { "Text", "Show Boss Status" }, { "Description", "Shows the boss status of the module in the popup if \"Show Module Names\" is enabled." } },
 						new Dictionary<string, object> { { "Key", nameof(Delay) }, { "Text", "Popup Delay" }, { "Description", "Time in seconds a module should be higlighted before showing the popup." } },
 						new Dictionary<string, object> { { "Key", nameof(PopupKeys) }, { "Text", "Popup Keys" }, { "Description", "The button which can be used to show the popup.\ne.g. F1, Ctrl+F1, Command+Shift+Space, Mouse2, GamepadLB." } }
 					}

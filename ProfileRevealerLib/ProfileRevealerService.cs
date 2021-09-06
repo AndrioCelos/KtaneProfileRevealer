@@ -10,6 +10,8 @@ using System.Reflection;
 
 using Newtonsoft.Json;
 using UnityEngine;
+using UnityEngine.Networking;
+using Newtonsoft.Json.Linq;
 
 #if !DEBUG
 using UnityEngine.SceneManagement;
@@ -36,6 +38,7 @@ namespace ProfileRevealerLib {
 		private ModulePopup? focusedModulePopup;
 		private Component? tweaksService;
 		private IDictionary<string, IList<string>>? moduleProfiles;
+		private IDictionary<string, IList<string>> bossStatus = new Dictionary<string, IList<string>>();
 
 		private readonly List<ModulePopup> popups = new List<ModulePopup>();
 
@@ -60,6 +63,8 @@ namespace ProfileRevealerLib {
 			} else {
 				this.RefreshConfig();
 			}
+
+			GetModuleJSON();
 
 #if !DEBUG
 			this.KMGameInfo.OnStateChange = this.KMGameInfo_OnStateChange;
@@ -117,6 +122,72 @@ namespace ProfileRevealerLib {
 		}
 #endif
 
+		private void GetModuleJSON()
+		{
+			Debug.Log($"[Provile Revealer] Starting request for boss status..");
+			bossStatus = new Dictionary<string, IList<string>>();
+			StartCoroutine(GetModuleJSONCoroutine());
+		}
+
+		private IEnumerator GetModuleJSONCoroutine()
+		{
+			var url = "https://buriburi/json/raw";
+            using var http = UnityWebRequest.Get(url);
+
+            yield return http.SendWebRequest();
+
+            if (http.isNetworkError)
+            {
+                Debug.LogFormat(@"[Profile Revealer] Website {0} responded with error: {1}", url, http.error);
+                yield break;
+            }
+
+            if (http.responseCode != 200)
+            {
+                Debug.LogFormat(@"[Profile Revealer] Website {0} responded with code: {1}", url, http.responseCode);
+                yield break;
+            }
+
+            var allModules = JObject.Parse(http.downloadHandler.text)["KtaneModules"] as JArray;
+            if (allModules == null)
+            {
+                Debug.LogFormat(@"[Profile Revealer] Website {0} did not respond with a JSON array at “KtaneModules” key.", url, http.responseCode);
+                yield break;
+            }
+
+            foreach (JObject module in allModules)
+            {
+                var status = new List<string>() { };
+                if (module["IsFullBoss"] is JValue isFullBossV && isFullBossV.Value is bool isFullBoss && isFullBoss == true)
+                {
+                    status.Add("Full Boss");
+                }
+                if (module["IsSemiBoss"] is JValue isSemiBossV && isSemiBossV.Value is bool isSemiBoss && isSemiBoss == true)
+                {
+                    status.Add("Semi Boss");
+                }
+                if (module["IsPseudoNeedy"] is JValue isPseudoNeedyV && isPseudoNeedyV.Value is bool isPsudoNeedy && isPsudoNeedy == true)
+                {
+                    status.Add("Pseudo Needy");
+                }
+
+				if(status.Count > 0)
+				{
+					if (module["DisplayName"] is JValue displayNameV && displayNameV.Value is string displayName)
+					{
+						bossStatus.Add(displayName, status);
+						Debug.LogFormat(@"[Profile Revealer] Setting boss status of {0} to {1}.", displayName, String.Join(", ", status.ToArray()));
+					} else if (module["Name"] is JValue nameV && nameV.Value is string name)
+					{
+						bossStatus.Add(name, status);
+						Debug.LogFormat(@"[Profile Revealer] Setting boss status of {0} to {1}.", name, String.Join(", ", status.ToArray()));
+
+					}
+
+				}
+			}
+		}
+
 		private bool prevPressed;
 		public void Update() {
 			if (this.gameState == KMGameInfo.State.Gameplay && this.config != null
@@ -161,7 +232,7 @@ namespace ProfileRevealerLib {
 			if (state == KMGameInfo.State.Gameplay) {
 				// Enabling Show Module Names is considered an advantageous feature, so disable records in that case.
 				// This code is based on the Tweaks mod.
-				if (this.config.ShowModuleNames) LeaderboardController.DisableLeaderboards();
+				if (this.config.IsAdvantagusFeatures) LeaderboardController.DisableLeaderboards();
 				this.StartCoroutine(this.CheckForBombs());
 			} else if (state == KMGameInfo.State.Transitioning && this.gameState == KMGameInfo.State.Setup) {
 				this.KMModSettings.RefreshSettings();
@@ -184,7 +255,7 @@ namespace ProfileRevealerLib {
 
 		private void SceneManager_sceneLoaded(Scene scene, LoadSceneMode loadSceneMode) {
 			if (scene.name == "gameplayLoadingScene") {
-				if (this.config.ShowModuleNames && GameplayState.MissionToLoad != FreeplayMissionGenerator.FREEPLAY_MISSION_ID &&
+				if (this.config.IsAdvantagusFeatures && GameplayState.MissionToLoad != FreeplayMissionGenerator.FREEPLAY_MISSION_ID &&
 					GameplayState.MissionToLoad != ModMission.CUSTOM_MISSION_ID)
 					this.StartCoroutine(this.ShowAdvantageousWarning());
 			}
@@ -214,7 +285,7 @@ namespace ProfileRevealerLib {
 				new JsonSerializer() { Formatting = Formatting.Indented }.Serialize(writer2, this.config);
 			}
 			// Respect Disable Advantageous Features in Tweaks.
-			if (this.config.ShowModuleNames && this.tweaksService != null) {
+			if (this.config.IsAdvantagusFeatures && this.tweaksService != null) {
 				if (this.tweaksSettingsField == null)
 					this.tweaksSettingsField = this.tweaksService.GetType().GetField("settings", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
 				var tweaksSettings = this.tweaksSettingsField.GetValue(null);
@@ -223,6 +294,7 @@ namespace ProfileRevealerLib {
 				if ((bool) this.tweaksDisableAdvantageousField.GetValue(tweaksSettings)) {
 					Debug.LogWarning("[Profile Revealer] Advantageous features are disabled in Tweaks settings. Overriding Show Module Names setting.");
 					this.config.ShowModuleNames = false;
+					this.config.ShowBossStatus = false;
 				}
 			}
 		}
@@ -262,7 +334,7 @@ namespace ProfileRevealerLib {
 			var isFactoryRoom = bombs[0].GetComponent<Selectable>().Parent.name.StartsWith("FactoryRoom");
 
 			// Disable leaderboards (needs to be done now to override Tweaks).
-			if (this.config.ShowModuleNames) {
+			if (this.config.IsAdvantagusFeatures) {
 				Assets.Scripts.Stats.StatsManager.Instance.DisableStatChanges = true;
 				Assets.Scripts.Records.RecordManager.Instance.DisableBestRecords = true;
 			}
@@ -325,6 +397,10 @@ namespace ProfileRevealerLib {
 						popup.Module = component.transform;
 						++moduleIndex;
 						if (this.config.ShowModuleNames) popup.moduleName = component.GetModuleDisplayName();
+						if (this.config.ShowBossStatus && bossStatus.ContainsKey(component.GetModuleDisplayName()))
+						{
+							popup.bossStatus = bossStatus[component.GetModuleDisplayName()];
+						}
 
 						popup.Delay = this.config.Delay;
 						if (kmBombModule == null && kmNeedyModule == null) {
@@ -395,6 +471,10 @@ namespace ProfileRevealerLib {
 					var popup = Instantiate(this.PopupPrefab, transform, false);
 					popup.Module = transform;
 					if (this.config.ShowModuleNames) popup.moduleName = transform.name;
+					if (this.config.ShowBossStatus && bossStatus.ContainsKey(transform.name))
+					{
+						popup.bossStatus = bossStatus[transform.name];
+					}
 					popup.Delay = 2;
 					popup.enabledProfiles = new[] { "Alice", "Bob" };
 					popup.disabledProfiles = new[] { "Carol", "Dan" };

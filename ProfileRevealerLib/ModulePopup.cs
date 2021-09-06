@@ -17,6 +17,7 @@ namespace ProfileRevealerLib {
 		public float Delay { get; set; }
 		public Transform Module { get; set; }
 		public string ProfileName { get => this.profileName; set { this.profileName = value; this.setText(); } }
+		internal IList<string> bossStatus;
 
 		internal string moduleName;
 		private string profileName;
@@ -55,6 +56,7 @@ namespace ProfileRevealerLib {
 
 			var builder = new StringBuilder();
 			if (this.moduleName != null) builder.AppendLine($"<b>{this.moduleName}</b>");
+			if (this.bossStatus != null) builder.AppendLine($"<color=red>({ String.Join(", ", this.bossStatus.ToArray())})</color>");
 			if (ProfileName != null)
 				builder.AppendLine($"Chosen from: <color=yellow>{ProfileName}</color>");
 			if (enabledProfilesStr.Length > 0)
